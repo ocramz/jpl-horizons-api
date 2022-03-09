@@ -2,15 +2,22 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -Wno-unused-imports #-}
-module API.JPL.Horizons where
+module API.JPL.Horizons (
+  get, Vec,
+  BodiesL(..), Bodies(..),
+  -- * CSV export
+  vecCsvBuilder, vecCsvHeader,
+  bsbWriteFile
+  ) where
 
 import Control.Applicative (Alternative(..))
 import Data.Functor (void)
 import Data.Void
-
-import Data.List (intercalate)
+import Data.List (intercalate, intersperse)
+import           System.IO (Handle, IOMode(..), withBinaryFile)
 -- bytestring
 import qualified Data.ByteString as BS (ByteString)
+import qualified Data.ByteString.Builder as BSB (Builder, toLazyByteString, hPutBuilder, char8, string8)
 import qualified Data.ByteString.Internal as BS (c2w)
 import qualified Data.ByteString.Char8 as BS8 (pack)
 -- megaparsec
@@ -23,23 +30,32 @@ import Network.HTTP.Req (runReq, defaultHttpConfig, req, GET(..), Option, Url, S
 import Data.Text (Text)
 -- scientific
 import Data.Scientific (Scientific)
+import Data.ByteString.Builder.Scientific (scientificBuilder)
 -- time
 import Data.Time.Calendar (Day, toGregorian, fromGregorian)
 
--- get :: (Day, Day) -> Int -> IO (Either ParseErrorBundle [Vec])
-get :: (Bodies b) => (Day, Day) -> Int -> b -> IO ()
+
+
+bsbWriteFile :: FilePath -> BSB.Builder -> IO ()
+bsbWriteFile = modifyFile WriteMode
+modifyFile :: IOMode -> FilePath -> BSB.Builder -> IO ()
+modifyFile mode f bld = withBinaryFile f mode (`BSB.hPutBuilder` bld)
+
+-- | Run an API call
+get :: (Bodies b) => (Day, Day) -> Int -> b -> IO BSB.Builder
 get ds dt b = do
   bs <- get0 $ opts ds dt b
   case P.parse vectors "" bs of
-    Right vs -> print vs
-    Left e -> putStrLn $ P.errorBundlePretty e
+    Right vs -> pure $
+                  vecCsvHeader <>
+                  foldMap vecCsvBuilder vs
+    Left e -> error $ P.errorBundlePretty e
 
 get0 :: Option 'Https -> IO BS.ByteString
 get0 os = runReq defaultHttpConfig $ do
   r <- req GET endpoint NoReqBody bsResponse os
   pure $ responseBody r
 
--- opts :: Option 'Https
 opts :: (Bodies b) => (Day, Day) -> Int -> b -> Option 'Https
 opts (d0, d1) dt b =
   "format" ==: "text" <>
@@ -65,7 +81,9 @@ opts (d0, d1) dt b =
     [id:899]   Neptune
 -}
 
+-- | Large bodies in the Solar System
 data BodiesL = Sun | Mercury | Venus | Earth | Moon | Mars | Jupiter | Saturn | Uranus | Neptune deriving (Eq, Show)
+
 class Bodies c where
   bodyToCommand :: c -> String
 instance Bodies BodiesL where
@@ -108,6 +126,20 @@ vectors :: Parser [Vec]
 vectors = P.some header *> payload (P.some vec)
 
 data Vec = Vec Scientific Scientific Scientific Scientific Scientific Scientific deriving (Show)
+
+
+vecCsvHeader :: BSB.Builder
+vecCsvHeader = csvBuild BSB.string8 ["X", "Y", "Z", "VX", "VY", "VZ"]
+
+csvBuild :: (t -> BSB.Builder) -> [t] -> BSB.Builder
+csvBuild bfun (x:xs) = bfun x <> go xs
+  where
+    go (w:ws) = BSB.string8 "," <> bfun w <> go ws
+    go [] = mempty
+
+vecCsvBuilder :: Vec -> BSB.Builder
+vecCsvBuilder (Vec vx vy vz vvx vvy vvz) = csvBuild scientificBuilder [vx, vy, vz, vvx, vvy, vvz]
+
 
 
 -- | timestamp line e.g.
