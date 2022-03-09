@@ -17,7 +17,7 @@ import qualified Data.ByteString.Char8 as BS8 (pack)
 import qualified Text.Megaparsec as P (Parsec, ParseErrorBundle, try, parse, parseTest, some, satisfy, between, skipManyTill, takeWhileP)
 import qualified Text.Megaparsec.Error as P (errorBundlePretty)
 import qualified Text.Megaparsec.Byte as PL (space1)
-import qualified Text.Megaparsec.Byte.Lexer as PL (space, lexeme, symbol, skipLineComment, skipBlockComment, scientific, float)
+import qualified Text.Megaparsec.Byte.Lexer as PL (space, lexeme, symbol, skipLineComment, skipBlockComment, scientific, float, signed)
 -- req
 import Network.HTTP.Req (runReq, defaultHttpConfig, req, GET(..), Option, Url, Scheme(..), https, (/:), NoReqBody(..), bsResponse, responseBody, (=:) )
 import Data.Text (Text)
@@ -125,22 +125,30 @@ vec = do
   cvx <- vx <* PL.space1
   cvy <- vy <* PL.space1
   cvz <- vz <* PL.space1
+  clt <- lt <* PL.space1
+  crg <- rg <* PL.space1
+  crr <- rr <* PL.space1
   pure $ Vec cx cy cz cvx cvy cvz
 
-x, y, z, vx, vy, vz :: Parser Scientific
+x, y, z, vx, vy, vz, lt, rg, rr :: Parser Scientific
 x = vcomp "X"
 y = vcomp "Y"
 z = vcomp "Z"
 vx = vcomp "VX"
 vy = vcomp "VY"
 vz = vcomp "VZ"
+lt = vcomp "LT"
+rg = vcomp "RG"
+rr = vcomp "RR"
 
 vcomp :: String -> Parser Scientific
-vcomp vv = psymbol (BS8.pack vv) >> psymbol "=" >> PL.scientific
+vcomp vv = psymbol (BS8.pack vv) >> psymbol "=" >> scientific
+
+scientific :: Parser Scientific
+scientific = PL.signed space PL.scientific
 
 payload :: Parser a -> Parser a
-payload = P.between s s where
-  s = payloadDelim
+payload = P.between (psymbol "$$SOE") (psymbol "$$EOE")
 
 payloadDelim :: Parser ()
 payloadDelim = void $ psymbol "$$SOE"
