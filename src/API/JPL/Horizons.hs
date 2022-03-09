@@ -99,7 +99,18 @@ opts (d0, d1) dt b =
 -}
 
 -- | Large bodies in the Solar System
-data Body = Sun | Mercury | Venus | Earth | Moon | Mars | Jupiter | Saturn | Uranus | Neptune deriving (Eq, Show, Enum)
+data Body = Sun
+          | Mercury
+          | Venus
+          | Earth | Moon
+          | Mars
+          | Jupiter | Io | Europa | Ganymede | Callisto | Amalthea
+          | Saturn | Mimas | Enceladus | Tethys | Dione | Rhea | Titan | Hyperion | Iapetus | Phoebe | Janus | Epimetheus
+          | Uranus
+          | Neptune | Triton
+          | Pluto
+          | Eris
+          deriving (Eq, Show, Enum)
 
 class IsBody c where
   bodyToCommand :: c -> String
@@ -112,9 +123,28 @@ instance IsBody Body where
     Moon -> "301"
     Mars -> "499"
     Jupiter -> "599"
+    Io -> "501"
+    Europa -> "502"
+    Ganymede -> "503"
+    Callisto -> "504"
+    Amalthea -> "505"
     Saturn -> "699"
+    Mimas -> "601"
+    Enceladus -> "602"
+    Tethys -> "603"
+    Dione -> "604"
+    Rhea -> "605"
+    Titan -> "606"
+    Hyperion -> "607"
+    Iapetus -> "608"
+    Phoebe -> "609"
+    Janus -> "610"
+    Epimetheus -> "611"
     Uranus -> "799"
     Neptune -> "899"
+    Triton -> "801"
+    Pluto -> "999"
+    Eris -> "136199"
 
 stepsizeMins :: Int -> String
 stepsizeMins m = show m <> "m"
