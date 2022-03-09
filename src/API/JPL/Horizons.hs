@@ -9,7 +9,7 @@
 -- 1) https://ssd.jpl.nasa.gov/horizons/
 module API.JPL.Horizons (
   saveCsv,
-  BodiesL(..), Bodies,
+  Body(..),
   -- -- * CSV export
   -- vecCsvBuilder, vecCsvHeader,
   -- bsbWriteFile
@@ -47,18 +47,19 @@ modifyFile :: IOMode -> FilePath -> BSB.Builder -> IO ()
 modifyFile mode f bld = withBinaryFile f mode (`BSB.hPutBuilder` bld)
 
 -- | Make an API call, parse and save the results as CSV
-saveCsv :: Bodies b =>
-           (Day, Day) -- ^ (first, last) day of observation
+saveCsv :: (Day, Day) -- ^ (first, last) day of observation
         -> Int -- ^ observation interval in minutes 
-        -> b -- ^ solar system body
-        -> FilePath -- ^ CSV path
+        -> Body -- ^ solar system body
+        -> FilePath -- ^ CSV directory path
         -> IO ()
-saveCsv ds dt b fpath = do
+saveCsv ds@(d0, d1) dt b fdir = do
   bsb <- get ds dt b
+  let
+    fpath = fdir <> "/" <> mconcat (intersperse "_" [show b, time d0, time d1]) <> ".csv"
   bsbWriteFile fpath bsb
 
 -- | Run an API call
-get :: (Bodies b) => (Day, Day) -> Int -> b -> IO BSB.Builder
+get :: (Day, Day) -> Int -> Body -> IO BSB.Builder
 get ds dt b = do
   bs <- get0 $ opts ds dt b
   case P.parse vectors "" bs of
@@ -72,7 +73,7 @@ get0 os = runReq defaultHttpConfig $ do
   r <- req GET endpoint NoReqBody bsResponse os
   pure $ responseBody r
 
-opts :: (Bodies b) => (Day, Day) -> Int -> b -> Option 'Https
+opts :: (Day, Day) -> Int -> Body -> Option 'Https
 opts (d0, d1) dt b =
   "format" ==: "text" <>
   "make_ephem" ==: "yes" <>
@@ -98,11 +99,11 @@ opts (d0, d1) dt b =
 -}
 
 -- | Large bodies in the Solar System
-data BodiesL = Sun | Mercury | Venus | Earth | Moon | Mars | Jupiter | Saturn | Uranus | Neptune deriving (Eq, Show, Enum)
+data Body = Sun | Mercury | Venus | Earth | Moon | Mars | Jupiter | Saturn | Uranus | Neptune deriving (Eq, Show, Enum)
 
-class Bodies c where
+class IsBody c where
   bodyToCommand :: c -> String
-instance Bodies BodiesL where
+instance IsBody Body where
   bodyToCommand = \case
     Sun -> "10"
     Mercury -> "199"
