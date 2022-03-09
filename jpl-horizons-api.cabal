@@ -8,7 +8,7 @@ license-file:        LICENSE
 author:              Marco Zocca
 maintainer:          example@example.com
 copyright:           2022 Marco Zocca
-category:            API Web Astronomy
+category:            API, Astronomy
 build-type:          Simple
 extra-source-files:  README.md
 cabal-version:       >=1.10
