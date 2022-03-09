@@ -1,16 +1,23 @@
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -Wno-unused-imports #-}
 module API.JPL.Horizons where
+
+import Control.Applicative (Alternative(..))
+import Data.Functor (void)
 import Data.Void
+
 import Data.List (intercalate)
 -- bytestring
 import qualified Data.ByteString as BS (ByteString)
+import qualified Data.ByteString.Internal as BS (c2w)
 import qualified Data.ByteString.Char8 as BS8 (pack)
 -- megaparsec
-import qualified Text.Megaparsec as P (Parsec, ParseErrorBundle, try, parse, parseTest, some, satisfy, between)
+import qualified Text.Megaparsec as P (Parsec, ParseErrorBundle, try, parse, parseTest, some, satisfy, between, skipManyTill, takeWhileP)
+import qualified Text.Megaparsec.Error as P (errorBundlePretty)
 import qualified Text.Megaparsec.Byte as PL (space1)
-import qualified Text.Megaparsec.Byte.Lexer as PL (space, lexeme, symbol, skipLineComment, skipBlockComment, scientific)
+import qualified Text.Megaparsec.Byte.Lexer as PL (space, lexeme, symbol, skipLineComment, skipBlockComment, scientific, float)
 -- req
 import Network.HTTP.Req (runReq, defaultHttpConfig, req, GET(..), Option, Url, Scheme(..), https, (/:), NoReqBody(..), bsResponse, responseBody, (=:) )
 import Data.Text (Text)
@@ -19,10 +26,13 @@ import Data.Scientific (Scientific)
 -- time
 import Data.Time.Calendar (Day, toGregorian, fromGregorian)
 
-get :: (Day, Day) -> Int -> IO (Either ParseErrorBundle [Vec])
-get ds dt = do
-  bs <- get0 $ opts ds dt
-  pure $ P.parse vectors "" bs
+-- get :: (Day, Day) -> Int -> IO (Either ParseErrorBundle [Vec])
+get :: (Bodies b) => (Day, Day) -> Int -> b -> IO ()
+get ds dt b = do
+  bs <- get0 $ opts ds dt b
+  case P.parse vectors "" bs of
+    Right vs -> print vs
+    Left e -> putStrLn $ P.errorBundlePretty e
 
 get0 :: Option 'Https -> IO BS.ByteString
 get0 os = runReq defaultHttpConfig $ do
@@ -30,17 +40,46 @@ get0 os = runReq defaultHttpConfig $ do
   pure $ responseBody r
 
 -- opts :: Option 'Https
-opts :: (Day, Day) -> Int -> Option 'Https
-opts (d0, d1) dt =
+opts :: (Bodies b) => (Day, Day) -> Int -> b -> Option 'Https
+opts (d0, d1) dt b =
   "format" ==: "text" <>
   "make_ephem" ==: "yes" <>
-  "ephem_type" ==: "vector" <>
-  "command" ==: "499" <> -- Mars
+  "ephem_type" ==: "vectors" <>
+  "command" ==: bodyToCommand b <>
   "obj_data" ==: "no" <>
   "ref_system" ==: "icrf" <>
   "start_time" ==: time d0 <>
-  "end_time" ==: time d1 <>
+  "stop_time" ==: time d1 <>
   "step_size" ==: stepsizeMins dt
+
+{-
+    [id: 10]   Sun [Sol]
+    [id:199]   Mercury
+    [id:299]   Venus
+    [id:399]   Earth
+    [id:301]   Moon
+    [id:499]   Mars
+    [id:599]   Jupiter
+    [id:699]   Saturn
+    [id:799]   Uranus
+    [id:899]   Neptune
+-}
+
+data BodiesL = Sun | Mercury | Venus | Earth | Moon | Mars | Jupiter | Saturn | Uranus | Neptune deriving (Eq, Show)
+class Bodies c where
+  bodyToCommand :: c -> String
+instance Bodies BodiesL where
+  bodyToCommand = \case
+    Sun -> "10"
+    Mercury -> "199"
+    Venus -> "299"
+    Earth -> "399"
+    Moon -> "301"
+    Mars -> "499"
+    Jupiter -> "599"
+    Saturn -> "699"
+    Uranus -> "799"
+    Neptune -> "899"
 
 stepsizeMins :: Int -> String
 stepsizeMins m = show m <> "m"
@@ -63,13 +102,23 @@ endpoint = https "ssd.jpl.nasa.gov" /: "api" /: "horizons.api"
  LT= 3.868100505438247E+02 RG= 1.159627358316374E+08 RR= 1.474953828661886E+01
 -}
 
+
+
 vectors :: Parser [Vec]
-vectors = P.some v
+vectors = P.some header *> payload (P.some vec)
 
 data Vec = Vec Scientific Scientific Scientific Scientific Scientific Scientific deriving (Show)
 
-v :: Parser Vec -- (Scientific, Scientific, Scientific, Scientific, Scientific, Scientific)
-v = do
+
+-- | timestamp line e.g.
+--
+-- 2453736.500000000 = A.D. 2006-Jan-01 00:00:00.0000 TDB
+timestamp :: Parser ()
+timestamp = PL.float *> PL.space1 *> skipLine "= A.D."
+
+vec :: Parser Vec
+vec = do
+  timestamp
   cx <- x <* PL.space1
   cy <- y <* PL.space1
   cz <- z <* PL.space1
@@ -91,7 +140,27 @@ vcomp vv = psymbol (BS8.pack vv) >> psymbol "=" >> PL.scientific
 
 payload :: Parser a -> Parser a
 payload = P.between s s where
-  s = psymbol "$$SOE"
+  s = payloadDelim
+
+payloadDelim :: Parser ()
+payloadDelim = void $ psymbol "$$SOE"
+
+header :: Parser ()
+header = skipLine "Ephemeris" <|>
+         skipLine "API" <|>
+         skipLine "Target" <|>
+         skipLine "Center" <|>
+         skipLine "Output" <|>
+         skipLine "EOP" <|>
+         skipLine "Start" <|> skipLine "Stop" <|> skipLine "Step" <|> skipLine "Reference" <|> skipLine "JDTDB" <|>
+         skipLine "X" <|> skipLine "Y" <|> skipLine "Z" <|>
+         skipLine "VX" <|> skipLine "VY" <|> skipLine "VZ" <|>
+         skipLine "LT" <|> skipLine "RG" <|> skipLine "RR"
+
+skipLine :: String -> Parser ()
+skipLine s = psymbol (BS8.pack s) *>
+             void (P.takeWhileP (Just "") (\c -> c /= BS.c2w '\n')) *>
+             void (psymbol ("\n"))
 
 type Parser = P.Parsec Void BS.ByteString
 type ParseErrorBundle = P.ParseErrorBundle BS.ByteString Void
@@ -104,6 +173,6 @@ space :: Parser ()
 space = PL.space PL.space1 lineComment blockComment
 
 lineComment, blockComment :: Parser ()
-lineComment = PL.skipLineComment "%*"
+lineComment = PL.skipLineComment "****"
 
 blockComment = PL.skipBlockComment "/**" "*/"
