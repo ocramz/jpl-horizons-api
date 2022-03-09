@@ -1,13 +1,18 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# OPTIONS_GHC -Wno-unused-imports #-}
+{-# OPTIONS_GHC -Wno-unused-imports -Wno-type-defaults -Wno-unused-top-binds #-}
+-- | The JPL Horizons [1] on-line solar system data and ephemeris computation service provides access to key solar system data and flexible production of highly accurate ephemerides for solar system objects (1,180,796 asteroids, 3,789 comets, 211 planetary satellites {includes satellites of Earth and dwarf planet Pluto}, 8 planets, the Sun, L1, L2, select spacecraft, and system barycenters).
+--
+-- Horizons is provided by the Solar System Dynamics Group of the Jet Propulsion Laboratory.
+--
+-- 1) https://ssd.jpl.nasa.gov/horizons/
 module API.JPL.Horizons (
-  get, Vec,
-  BodiesL(..), Bodies(..),
-  -- * CSV export
-  vecCsvBuilder, vecCsvHeader,
-  bsbWriteFile
+  saveCsv,
+  BodiesL(..), Bodies,
+  -- -- * CSV export
+  -- vecCsvBuilder, vecCsvHeader,
+  -- bsbWriteFile
   ) where
 
 import Control.Applicative (Alternative(..))
@@ -40,6 +45,17 @@ bsbWriteFile :: FilePath -> BSB.Builder -> IO ()
 bsbWriteFile = modifyFile WriteMode
 modifyFile :: IOMode -> FilePath -> BSB.Builder -> IO ()
 modifyFile mode f bld = withBinaryFile f mode (`BSB.hPutBuilder` bld)
+
+-- | Make an API call, parse and save the results as CSV
+saveCsv :: Bodies b =>
+           (Day, Day) -- ^ (first, last) day of observation
+        -> Int -- ^ observation interval in minutes 
+        -> b -- ^ solar system body
+        -> FilePath -- ^ CSV path
+        -> IO ()
+saveCsv ds dt b fpath = do
+  bsb <- get ds dt b
+  bsbWriteFile fpath bsb
 
 -- | Run an API call
 get :: (Bodies b) => (Day, Day) -> Int -> b -> IO BSB.Builder
@@ -82,7 +98,7 @@ opts (d0, d1) dt b =
 -}
 
 -- | Large bodies in the Solar System
-data BodiesL = Sun | Mercury | Venus | Earth | Moon | Mars | Jupiter | Saturn | Uranus | Neptune deriving (Eq, Show)
+data BodiesL = Sun | Mercury | Venus | Earth | Moon | Mars | Jupiter | Saturn | Uranus | Neptune deriving (Eq, Show, Enum)
 
 class Bodies c where
   bodyToCommand :: c -> String
@@ -121,25 +137,25 @@ endpoint = https "ssd.jpl.nasa.gov" /: "api" /: "horizons.api"
 -}
 
 
-
 vectors :: Parser [Vec]
 vectors = P.some header *> payload (P.some vec)
 
 data Vec = Vec Scientific Scientific Scientific Scientific Scientific Scientific deriving (Show)
 
-
+-- | CSV Header
 vecCsvHeader :: BSB.Builder
 vecCsvHeader = csvBuild BSB.string8 ["X", "Y", "Z", "VX", "VY", "VZ"]
+-- | CSV data row
+vecCsvBuilder :: Vec -> BSB.Builder
+vecCsvBuilder (Vec v0x v0y v0z vvx vvy vvz) =
+  csvBuild scientificBuilder [v0x, v0y, v0z, vvx, vvy, vvz]
 
 csvBuild :: (t -> BSB.Builder) -> [t] -> BSB.Builder
-csvBuild bfun (x:xs) = bfun x <> go xs
+csvBuild _ [] = mempty
+csvBuild bfun (w:ws) = bfun w <> go ws
   where
-    go (w:ws) = BSB.string8 "," <> bfun w <> go ws
-    go [] = mempty
-
-vecCsvBuilder :: Vec -> BSB.Builder
-vecCsvBuilder (Vec vx vy vz vvx vvy vvz) = csvBuild scientificBuilder [vx, vy, vz, vvx, vvy, vvz]
-
+    go (m:ms) = BSB.string8 "," <> bfun m <> go ms
+    go [] = BSB.string8 "\n"
 
 
 -- | timestamp line e.g.
@@ -157,9 +173,9 @@ vec = do
   cvx <- vx <* PL.space1
   cvy <- vy <* PL.space1
   cvz <- vz <* PL.space1
-  clt <- lt <* PL.space1
-  crg <- rg <* PL.space1
-  crr <- rr <* PL.space1
+  _ <- lt <* PL.space1
+  _ <- rg <* PL.space1
+  _ <- rr <* PL.space1
   pure $ Vec cx cy cz cvx cvy cvz
 
 x, y, z, vx, vy, vz, lt, rg, rr :: Parser Scientific
@@ -182,8 +198,8 @@ scientific = PL.signed space PL.scientific
 payload :: Parser a -> Parser a
 payload = P.between (psymbol "$$SOE") (psymbol "$$EOE")
 
-payloadDelim :: Parser ()
-payloadDelim = void $ psymbol "$$SOE"
+-- payloadDelim :: Parser ()
+-- payloadDelim = void $ psymbol "$$SOE"
 
 header :: Parser ()
 header = skipLine "Ephemeris" <|>
