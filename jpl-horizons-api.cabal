@@ -1,7 +1,9 @@
 name:                jpl-horizons-api
-version:             0.3.0.0
+version:             0.4.0.0
 synopsis: Ephemerides for solar system objects from the JPL Horizons service
 description: The JPL Horizons on-line solar system data and ephemeris computation service provides access to key solar system data and flexible production of highly accurate ephemerides for solar system objects (1,180,796 asteroids, 3,789 comets, 211 planetary satellites {includes satellites of Earth and dwarf planet Pluto}, 8 planets, the Sun, L1, L2, select spacecraft, and system barycenters). Horizons is provided by the Solar System Dynamics Group of the Jet Propulsion Laboratory.
+             .
+             This package provides a convenience function for downloading select intervals of ephemeris data, and saving the state vector as a CSV file.
 homepage:            https://github.com/ocramz/jpl-horizons-api
 license:             BSD3
 license-file:        LICENSE

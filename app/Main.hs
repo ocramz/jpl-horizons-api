@@ -13,8 +13,8 @@ import API.JPL.Horizons (saveCsv, Body(..))
 
 main :: IO ()
 main = do
-  (Cfg d0 d1 r bdy) <- customExecParser (prefs showHelpOnError) opts
-  saveCsv (d0, d1) r bdy "data"
+  (Cfg cbody d0 d1 r bdy) <- customExecParser (prefs showHelpOnError) opts
+  saveCsv cbody (d0, d1) r bdy "data"
 
 
 opts :: ParserInfo Cfg
@@ -24,7 +24,8 @@ opts = info (cfgP <**> helper)
   <> header "jpl-horizons-api - download ephemerides in CSV format" )
 
 data Cfg = Cfg {
-  cfgDay0 :: Day
+  cfgCenterBody :: Body
+  , cfgDay0 :: Day
   , cfgDay1 :: Day
   , cfgResolnMin :: Int
   , cfgBody :: Body 
@@ -32,6 +33,7 @@ data Cfg = Cfg {
 
 cfgP :: Parser Cfg
 cfgP = Cfg <$>
+  centerBodyP <*>
        day0P <*>
        day1P <*>
        resolnP <*>
@@ -55,8 +57,19 @@ day1P = fromGregorian <$>
           option auto (long "month_stop" <> value 1 <> showDefault) <*>
           option auto (long "day_stop" <> value 1 <> showDefault)
 
+
+centerBodyP :: Parser Body
+centerBodyP = flag' Sun (long "sun") <|>
+              flag' Earth (long "earth")
+
 bodyP :: Parser Body
 bodyP = flag' Sun (long "sun") <|>
         flag' Mercury (long "mercury") <|>
         flag' Venus (long "venus") <|>
-        flag' Earth (long "earth")
+        flag' Earth (long "earth") <|>
+        flag' Moon (long "moon") <|>
+        flag' Mars (long "mars") <|>
+        flag' Jupiter (long "jupiter") <|>
+        flag' Saturn (long "saturn") <|>
+        flag' Uranus (long "uranus") <|>
+        flag' Pluto (long "pluto")

@@ -38,30 +38,33 @@ import Data.Scientific (Scientific)
 import Data.ByteString.Builder.Scientific (scientificBuilder)
 -- time
 import Data.Time.Calendar (Day, toGregorian, fromGregorian)
+import Data.Time.Clock (DiffTime)
 
 
+-- | Make an API call, parse and save the results as CSV
+--
+-- The resulting file will contain one sample of the state vector per row
+saveCsv :: Body -- ^ center body (observation site)
+        -> (Day, Day) -- ^ (first, last) day of observation
+        -> Int -- ^ observation interval in minutes
+        -> Body -- ^ solar system body
+        -> FilePath -- ^ CSV directory path
+        -> IO ()
+saveCsv centerb ds@(d0, d1) dt b fdir = do
+  bsb <- get centerb ds dt b
+  let
+    fpath = fdir <> "/" <> mconcat (intersperse "_" [show b, time d0, time d1]) <> ".csv"
+  bsbWriteFile fpath bsb
 
 bsbWriteFile :: FilePath -> BSB.Builder -> IO ()
 bsbWriteFile = modifyFile WriteMode
 modifyFile :: IOMode -> FilePath -> BSB.Builder -> IO ()
 modifyFile mode f bld = withBinaryFile f mode (`BSB.hPutBuilder` bld)
 
--- | Make an API call, parse and save the results as CSV
-saveCsv :: (Day, Day) -- ^ (first, last) day of observation
-        -> Int -- ^ observation interval in minutes 
-        -> Body -- ^ solar system body
-        -> FilePath -- ^ CSV directory path
-        -> IO ()
-saveCsv ds@(d0, d1) dt b fdir = do
-  bsb <- get ds dt b
-  let
-    fpath = fdir <> "/" <> mconcat (intersperse "_" [show b, time d0, time d1]) <> ".csv"
-  bsbWriteFile fpath bsb
-
--- | Run an API call
-get :: (Day, Day) -> Int -> Body -> IO BSB.Builder
-get ds dt b = do
-  bs <- get0 $ opts ds dt b
+-- | Make an API call
+get :: Body -> (Day, Day) -> Int -> Body -> IO BSB.Builder
+get centerb ds dt b = do
+  bs <- get0 $ opts centerb ds dt b
   case P.parse vectors "" bs of
     Right vs -> pure $
                   vecCsvHeader <>
@@ -73,11 +76,12 @@ get0 os = runReq defaultHttpConfig $ do
   r <- req GET endpoint NoReqBody bsResponse os
   pure $ responseBody r
 
-opts :: (Day, Day) -> Int -> Body -> Option 'Https
-opts (d0, d1) dt b =
+opts :: Body -> (Day, Day) -> Int -> Body -> Option 'Https
+opts cb (d0, d1) dt b =
   "format" ==: "text" <>
   "make_ephem" ==: "yes" <>
   "ephem_type" ==: "vectors" <>
+  "center" ==: bodyToCommand cb <>
   "command" ==: bodyToCommand b <>
   "obj_data" ==: "no" <>
   "ref_system" ==: "icrf" <>
