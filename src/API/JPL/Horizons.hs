@@ -10,16 +10,15 @@
 module API.JPL.Horizons (
   saveCsv,
   Body(..),
-  -- -- * CSV export
-  -- vecCsvBuilder, vecCsvHeader,
-  -- bsbWriteFile
+  Format(..)
   ) where
 
 import Control.Applicative (Alternative(..))
 import Data.Functor (void)
 import Data.Void
 import Data.List (intercalate, intersperse)
-import           System.IO (Handle, IOMode(..), withBinaryFile)
+import System.IO (Handle, IOMode(..), stdout, withBinaryFile)
+
 -- bytestring
 import qualified Data.ByteString as BS (ByteString)
 import qualified Data.ByteString.Builder as BSB (Builder, toLazyByteString, hPutBuilder, char8, string8)
@@ -48,13 +47,21 @@ saveCsv :: Body -- ^ center body (observation site)
         -> (Day, Day) -- ^ (first, last) day of observation
         -> Int -- ^ observation interval in minutes
         -> Body -- ^ solar system body
-        -> FilePath -- ^ CSV directory path
+        -> Format -- ^ Output format
         -> IO ()
-saveCsv centerb ds@(d0, d1) dt b fdir = do
+saveCsv centerb ds@(d0, d1) dt b format = do
   bsb <- get centerb ds dt b
-  let
-    fpath = fdir <> "/" <> mconcat (intersperse "_" [show b, time d0, time d1]) <> ".csv"
-  bsbWriteFile fpath bsb
+  case format of
+    StdOut -> do
+      BSB.hPutBuilder stdout bsb
+    ToCSV fdir -> do
+      let
+        fpath = fdir <> "/" <> mconcat (intersperse "_" [show b, time d0, time d1]) <> ".csv"
+      bsbWriteFile fpath bsb
+
+-- | Output format
+data Format = StdOut
+            | ToCSV FilePath
 
 bsbWriteFile :: FilePath -> BSB.Builder -> IO ()
 bsbWriteFile = modifyFile WriteMode

@@ -7,14 +7,14 @@ import Options.Applicative (Parser, ParserInfo, customExecParser, prefs, showHel
 -- time
 import Data.Time.Calendar (Day, toGregorian, fromGregorian)
 
-import API.JPL.Horizons (saveCsv, Body(..))
+import API.JPL.Horizons (saveCsv, Body(..), Format(..))
 
 
 
 main :: IO ()
 main = do
-  (Cfg cbody d0 d1 r bdy) <- customExecParser (prefs showHelpOnError) opts
-  saveCsv cbody (d0, d1) r bdy "data"
+  (Cfg cbody d0 d1 r bdy fmt) <- customExecParser (prefs showHelpOnError) opts
+  saveCsv cbody (d0, d1) r bdy fmt
 
 
 opts :: ParserInfo Cfg
@@ -28,7 +28,8 @@ data Cfg = Cfg {
   , cfgDay0 :: Day
   , cfgDay1 :: Day
   , cfgResolnMin :: Int
-  , cfgBody :: Body 
+  , cfgBody :: Body
+  , cfgFormat :: Format
                }
 
 cfgP :: Parser Cfg
@@ -37,7 +38,23 @@ cfgP = Cfg <$>
        day0P <*>
        day1P <*>
        resolnP <*>
-       bodyP
+       bodyP <*>
+       formatP
+
+formatP :: Parser Format
+formatP = stdOutP <|>
+          toCsvP
+
+stdOutP :: Parser Format
+stdOutP = flag' StdOut (long "stdout")
+
+toCsvP :: Parser Format
+toCsvP = ToCSV <$> strOption (
+  long "outout-directory" <>
+  short 'o' <>
+  value "data" <>
+  showDefault
+                    )
 
 resolnP :: Parser Int
 resolnP = option auto (long "resolution" <>

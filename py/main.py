@@ -19,7 +19,7 @@ def importData(planet, yy1, mm1, dd1, yy2, mm2, dd2):
 
 
 def scatter3( df ):
-    ax.scatter( df.iloc[:,1], df.iloc[:,2], df.iloc[:,3])
+    ax.scatter( df.iloc[:,0], df.iloc[:,1], df.iloc[:,2])
 
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
@@ -29,12 +29,13 @@ if __name__ == '__main__':
     df4 = importData('Venus', 2001, 1, 1, 2001, 6, 6)
     df5 = importData('Moon', 2001, 1, 1, 2001, 12, 12)
     df6 = importData('Mars', 2001, 1, 1, 2001, 6, 6)
+    df0 = importData('Earth', 1990, 1, 1, 1991, 1, 1)
 
     ax = plt.figure().add_subplot(projection='3d')
 
     # ax.scatter(x='X', y='Y', z='Z', zdir='y', label='...')
     # ax.scatter( df.iloc[:,1], df.iloc[:,2], df.iloc[:,3])
-    scatter3(df5)
+    scatter3(df0)
     # scatter3(df6)
 
     # Make legend, set axes limits and labels
